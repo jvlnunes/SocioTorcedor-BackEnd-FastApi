@@ -1,0 +1,38 @@
+services:
+  db:
+    image: postgres:16-alpine 
+    container_name: socio-db
+    environment:
+      POSTGRES_DB: socio_db        
+      POSTGRES_USER: postgres 
+      POSTGRES_PASSWORD: postgres 
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data 
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d socio_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - socio-net
+
+  backend:
+    build: .
+    container_name: socio-backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - socio-net
+
+volumes:
+  pg_data:
+
+networks:
+  socio-net:
