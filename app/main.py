@@ -1,15 +1,15 @@
-from fastapi import FastAPI, Depends, HTTPException
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Boolean, ForeignKey, text
-from sqlalchemy.orm import sessionmaker, declarative_base, Session, relationship
-from sqlalchemy.exc import OperationalError
-from pydantic import BaseModel
-from typing import Optional, List
-
 import os
 import time
-from datetime import datetime
 
-from dotenv import load_dotenv
+from dotenv         import load_dotenv
+from typing         import Optional, List
+from fastapi        import FastAPI, Depends, HTTPException
+from pydantic       import BaseModel
+from datetime       import datetime
+from sqlalchemy     import create_engine, Column, Integer, String, Text, DateTime, Boolean, ForeignKey, text
+from sqlalchemy.orm import sessionmaker, declarative_base, Session, relationship
+from sqlalchemy.exc import OperationalError
+
 load_dotenv()
 
 app = FastAPI(
@@ -78,6 +78,13 @@ class Match(Base):
 
 Base.metadata.create_all(bind=engine)
 
+class User(Base):
+    __tablename__ = "users"
+    
+    id       = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True)
+    email    = Column(String, unique=True, index=True)
+    password = Column(String)
 
 class PlayerBase(BaseModel):
     name: str
@@ -125,6 +132,10 @@ class MatchResponse(MatchBase):
     id: int
     class Config:
         from_attributes = True
+        
+class AuthResponse(BaseModel):
+    token: str
+    user: object
 
 def get_db():
     db = SessionLocal()
@@ -132,7 +143,6 @@ def get_db():
         yield db
     finally:
         db.close()
-
 
 @app.get("/")
 async def read_root():
@@ -229,3 +239,39 @@ def get_home_games(db: Session = Depends(get_db)):
         (Match.status == "upcoming") | (Match.status == "live")
     ).order_by(Match.match_datetime).all()
     return home_games
+
+
+@app.get("api/v1/auth/login", response_model=List[AuthResponse])
+def login(username: str, password: str, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.username == username).first()
+    if not user or user.password != password:
+        raise HTTPException(status_code=400, detail="Invalid credentials")
+    
+    token = "token"
+    
+    return AuthResponse(token=token, user=user.model_dump())
+
+@app.get("/api/v1/member/profile")
+def get_member_profile(user_id: int, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    return user.model_dump()
+
+@app.get("/api/v1/member/member/cards")
+@app.post("/api/v1/member/member/cards")
+@app.delete("/api/v1/member/member/cards")
+
+@app.get("/api/v1/dashboard", response_model=List[MatchResponse])
+def get_dashboard_data(db: Session = Depends(get_db)):
+    upcoming_matches = db.query(Match).filter(
+        (Match.status == "upcoming") | (Match.status == "live")
+    ).order_by(Match.match_datetime).all()
+    
+    recent_news = db.query(Match).filter(
+        Match.status == "completed"
+    ).order_by(Match.match_datetime.desc()).limit(5).all()
+    
+    
+    return upcoming_matches
